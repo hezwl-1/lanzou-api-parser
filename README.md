@@ -142,7 +142,82 @@ http_status      HTTP 状态码
 
 ## 测试效果
 
-已测试合集链接：
+### 合集解析完整测试
+
+测试合集链接：
+
+```text
+https://wwbvf.lanzouu.com/b0w9suulg
+```
+
+请求示例：
+
+```bash
+curl "http://你的域名/api/software/files.php?url=https%3A%2F%2Fwwbvf.lanzouu.com%2Fb0w9suulg&page=1"
+```
+
+接口实际返回概要：
+
+```json
+{
+  "success": true,
+  "file_count": 18,
+  "current_page": 1
+}
+```
+
+第一条文件数据：
+
+```json
+{
+  "index": 1,
+  "name": "山楂4K影视",
+  "url": "https://wwbvf.lanzouu.com/ilR8J3wkmxmd",
+  "time": "20 天前",
+  "size": "91.1 M"
+}
+```
+
+合集解析完整返回文件：
+
+```text
+examples/collection_b0w9suulg_page1.json
+```
+
+### 单文件解析完整测试
+
+测试单文件链接：
+
+```text
+https://wwbvf.lanzouu.com/ilR8J3wkmxmd
+```
+
+请求示例：
+
+```bash
+curl "http://你的域名/api/lanzou/resolve.php?url=https%3A%2F%2Fwwbvf.lanzouu.com%2FilR8J3wkmxmd"
+```
+
+接口实际返回概要：
+
+```json
+{
+  "http_status": 200,
+  "filename": "山楂4K影视.apk",
+  "file_size": "91.1 M",
+  "download_url": "https://..."
+}
+```
+
+单文件解析完整返回文件：
+
+```text
+examples/single_ilR8J3wkmxmd.json
+```
+
+### 旧测试样例
+
+另一个已测试合集链接：
 
 ```text
 https://wwbvf.lanzouu.com/b0w9n5hxa
