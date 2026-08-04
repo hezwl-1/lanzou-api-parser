@@ -14,19 +14,15 @@ Features:
 ## Directory layout
 
 ```text
-.
-??? api/
-?   ??? common.php
-?   ??? software/files.php
-?   ??? lanzou/resolve.php
-??? cache/
-?   ??? software_files/
-?   ??? lanzou_resolve/
-??? examples/
-?   ??? collection_b0w9n5hxa_page1.json
-??? t.php
-??? la.php
-??? lanzou_parser.php
+api/common.php
+api/software/files.php
+api/lanzou/resolve.php
+cache/software_files/
+cache/lanzou_resolve/
+examples/collection_b0w9n5hxa_page1.json
+t.php
+la.php
+lanzou_parser.php
 ```
 
 ## Requirements
