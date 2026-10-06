@@ -22,6 +22,8 @@ if (is_file($cacheFile) && (time() - filemtime($cacheFile)) < $cacheTtl) {
     if ($cached !== false && $cached !== '') {
         $cachedDecoded = json_decode($cached, true);
         if (is_array($cachedDecoded) && empty($cachedDecoded['error']) && !empty($cachedDecoded['download_url']) && !lanzou_resolve_is_transfer_url((string) $cachedDecoded['download_url'])) {
+            $cachedDecoded['download_url'] = lanzou_resolve_proxy_url((string) $cachedDecoded['download_url']);
+            $cached = json_encode($cachedDecoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
             header('X-Api-Cache: HIT');
             echo $cached;
             exit;
@@ -44,6 +46,8 @@ if ($body === false) {
 }
 
 if (empty($decoded['error']) && !empty($decoded['download_url']) && !lanzou_resolve_is_transfer_url((string) $decoded['download_url'])) {
+    $decoded['download_url'] = lanzou_resolve_proxy_url((string) $decoded['download_url']);
+    $body = json_encode($decoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
     if (!is_dir($cacheDir)) {
         @mkdir($cacheDir, 0755, true);
     }
@@ -57,4 +61,14 @@ function lanzou_resolve_is_transfer_url(string $url): bool
 {
     $path = (string) parse_url($url, PHP_URL_PATH);
     return preg_match('~/tp/~i', $path) === 1;
+}
+
+function lanzou_resolve_proxy_url(string $downloadUrl): string
+{
+    $host = strtolower((string) parse_url($downloadUrl, PHP_URL_HOST));
+    if ($host === '' || !preg_match('/(?:^|\.)dmpdmp\.com$|(?:^|\.)lanzouc\.com$/i', $host)) {
+        return $downloadUrl;
+    }
+
+    return 'http://a3.hezwl.cn/api/lanzou/proxy.php?url=' . rawurlencode($downloadUrl);
 }
