@@ -79,7 +79,12 @@ function la_resolve_url(string $inputUrl): array
         return $result;
     }
 
-    $downUrl = la_extract_downurl_href($html, $processedUrl);
+    // 新版首页先把 ddown 指向 /#文件ID，随后通过 JavaScript 改成真正的 /tp/ 中转地址。
+    // 必须优先读取脚本赋值，否则会把占位锚点误当成下载地址。
+    $downUrl = la_extract_script_href($html, $processedUrl);
+    if ($downUrl === '') {
+        $downUrl = la_extract_downurl_href($html, $processedUrl);
+    }
     if ($downUrl !== '' && !la_is_transfer_page_url($downUrl)) {
         $result['download_url'] = $downUrl;
         return $result;
@@ -296,8 +301,12 @@ function la_extract_file_meta(string $html): array
 
 function la_extract_script_direct_url(string $html): string
 {
-    $base = la_extract_js_var($html, 'vkjxld');
-    $query = la_extract_js_var($html, 'hyggid');
+    // 新版页面会先设置备用下载域名，随后根据 killdns2 是否存在再次覆盖
+    // vkjxld。浏览器最终使用的是最后一次赋值，不能取第一项。
+    $baseAssignments = la_extract_js_var_assignments($html, 'vkjxld');
+    $queryAssignments = la_extract_js_var_assignments($html, 'hyggid');
+    $base = (string) ($baseAssignments[count($baseAssignments) - 1] ?? '');
+    $query = (string) ($queryAssignments[count($queryAssignments) - 1] ?? '');
 
     if ($base === '' || $query === '') {
         return '';
@@ -335,11 +344,22 @@ function la_extract_lanosso_suffix(string $html): string
 
 function la_extract_downurl_href(string $html, string $baseUrl): string
 {
-    if (!preg_match('/<a\b(?=[^>]*\bid=["\']downurl["\'])(?=[^>]*\bhref=["\']([^"\']+)["\'])[^>]*>/i', $html, $matches)) {
+    // 新版分享页使用 id="ddown"，旧版中转页使用 id="downurl"。
+    if (!preg_match('/<a\b(?=[^>]*\bid=["\'](?:downurl|ddown)["\'])(?=[^>]*\bhref=["\']([^"\']+)["\'])[^>]*>/i', $html, $matches)) {
         return '';
     }
 
     $path = html_entity_decode($matches[1], ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    return la_absolute_url($path, $baseUrl);
+}
+
+function la_extract_script_href(string $html, string $baseUrl): string
+{
+    if (!preg_match('/(?:\b(?:link|submit)\b)\s*\.\s*href\s*=\s*([\'"])(.*?)\1\s*;?/is', $html, $matches)) {
+        return '';
+    }
+
+    $path = html_entity_decode((string) ($matches[2] ?? ''), ENT_QUOTES | ENT_HTML5, 'UTF-8');
     return la_absolute_url($path, $baseUrl);
 }
 
