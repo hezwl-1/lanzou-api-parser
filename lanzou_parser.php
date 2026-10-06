@@ -79,6 +79,15 @@ function la_resolve_url(string $inputUrl): array
         return $result;
     }
 
+    // 电脑版页面使用 iframe /fn -> ajaxfile.php?action=downprocess。
+    $pcResult = la_resolve_pc_download_url($html, $processedUrl);
+    if (!empty($pcResult['download_url'])) {
+        $result['download_url'] = (string) $pcResult['download_url'];
+        $result['content_length'] += (int) ($pcResult['content_length'] ?? 0);
+        $result['http_status'] = (int) ($pcResult['http_status'] ?? $result['http_status']);
+        return $result;
+    }
+
     // 新版首页先把 ddown 指向 /#文件ID，随后通过 JavaScript 改成真正的 /tp/ 中转地址。
     // 必须优先读取脚本赋值，否则会把占位锚点误当成下载地址。
     $downUrl = la_extract_script_href($html, $processedUrl);
@@ -279,6 +288,7 @@ function la_extract_file_meta(string $html): array
     $sizePatterns = [
         '/下载\s*[\(（]\s*([^)）]+?)\s*[\)）]/iu',
         '/<span[^>]*class=["\'][^"\']*\bmtt\b[^"\']*["\'][^>]*>\s*[\(（]?\s*([^()（）<]+?)\s*[\)）]?\s*<\/span>/is',
+        '/<[^>]*class=["\'][^"\']*\bn_filesize\b[^"\']*["\'][^>]*>\s*大小：?\s*([^<\r\n]+?)\s*<\/[^>]+>/iu',
         '/文件大小：?\s*([^<\r\n]+)\s*(?:<br|<\/)/iu',
     ];
     $meta['file_size'] = la_first_clean_match($html, $sizePatterns);
@@ -361,6 +371,123 @@ function la_extract_script_href(string $html, string $baseUrl): string
 
     $path = html_entity_decode((string) ($matches[2] ?? ''), ENT_QUOTES | ENT_HTML5, 'UTF-8');
     return la_absolute_url($path, $baseUrl);
+}
+
+function la_resolve_pc_download_url(string $html, string $baseUrl): array
+{
+    $iframeUrl = la_extract_pc_iframe_url($html, $baseUrl);
+    if ($iframeUrl === '') {
+        return [];
+    }
+
+    $iframeResult = la_fetch_html($iframeUrl, $baseUrl);
+    $iframeHtml = (string) ($iframeResult['body'] ?? '');
+    if ($iframeHtml === '') {
+        return [];
+    }
+
+    $ajaxData = la_decode_js_string(la_extract_js_var($iframeHtml, 'ajaxdata'));
+    $sign = la_decode_js_string(la_extract_js_var($iframeHtml, 'wp_sign'));
+    if ($ajaxData === '' || $sign === '') {
+        return [];
+    }
+
+    $domains = [];
+    foreach (['domain2', 'domain1'] as $domainName) {
+        $domain = la_decode_js_string(la_extract_js_var($iframeHtml, $domainName));
+        if ($domain !== '' && !in_array($domain, $domains, true)) {
+            $domains[] = $domain;
+        }
+    }
+
+    foreach ($domains as $ajaxUrl) {
+        foreach ([1, 0] as $kd) {
+            $postResult = la_fetch_post_json($ajaxUrl, [
+                'action' => 'downprocess',
+                'websignkey' => $ajaxData,
+                'signs' => $ajaxData,
+                'sign' => $sign,
+                'websign' => '',
+                'kd' => (string) $kd,
+                'ves' => '1',
+            ], $iframeUrl);
+            $json = json_decode((string) ($postResult['body'] ?? ''), true);
+            if (!is_array($json) || (string) ($json['zt'] ?? '') !== '1') {
+                continue;
+            }
+
+            $downloadDomain = la_decode_js_string((string) ($json['dom'] ?? ''));
+            $downloadPath = la_decode_js_string((string) ($json['url'] ?? ''));
+            if ($downloadDomain === '' || $downloadPath === '') {
+                continue;
+            }
+
+            $downloadUrl = rtrim($downloadDomain, '/') . '/file/' . ltrim($downloadPath, '/');
+            if (preg_match('/^https?:\/\/.+\/file\/.+/i', $downloadUrl)) {
+                return [
+                    'download_url' => $downloadUrl,
+                    'content_length' => strlen($iframeHtml) + strlen((string) ($postResult['body'] ?? '')),
+                    'http_status' => (int) ($postResult['http_status'] ?? 0),
+                ];
+            }
+        }
+    }
+
+    return [];
+}
+
+function la_extract_pc_iframe_url(string $html, string $baseUrl): string
+{
+    if (!preg_match('/<iframe\b[^>]*\bsrc=["\']([^"\']*\/fn\?[^"\']*)["\']/i', $html, $matches)) {
+        return '';
+    }
+
+    $src = html_entity_decode((string) $matches[1], ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    return la_absolute_url($src, $baseUrl);
+}
+
+function la_fetch_post_json(string $url, array $fields, string $referer = ''): array
+{
+    $host = (string) parse_url($url, PHP_URL_HOST);
+    $headers = [
+        'Host: ' . $host,
+        'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0 Safari/537.36',
+        'Accept: application/json, text/javascript, */*; q=0.01',
+        'Content-Type: application/x-www-form-urlencoded; charset=UTF-8',
+        'X-Requested-With: XMLHttpRequest',
+        'Origin: https://wwbvf.lanzouu.com',
+    ];
+
+    $ch = curl_init();
+    curl_setopt_array($ch, [
+        CURLOPT_URL => $url,
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => http_build_query($fields, '', '&'),
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER => $headers,
+        CURLOPT_ENCODING => '',
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_SSL_VERIFYHOST => false,
+        CURLOPT_TIMEOUT => 30,
+        CURLOPT_CONNECTTIMEOUT => 10,
+    ]);
+    if ($referer !== '') {
+        curl_setopt($ch, CURLOPT_REFERER, $referer);
+    }
+
+    $body = curl_exec($ch);
+    $error = curl_error($ch);
+    $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    if (PHP_VERSION_ID < 80500) {
+        curl_close($ch);
+    }
+
+    return [
+        'body' => $body === false ? '' : (string) $body,
+        'http_status' => $status,
+        'error' => $body === false ? ($error ?: 'curl_exec failed') : '',
+    ];
 }
 
 function la_is_transfer_page_url(string $url): bool
